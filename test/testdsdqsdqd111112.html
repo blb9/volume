@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Calculateur de Volume - Version Corrigée</title>
+<style>
+  :root{--accent:#ff7f00;--bg:#f7f7f7;--card:#fff;--dark:#111;}
+  body{font-family:Arial,Helvetica,sans-serif;margin:0;background:var(--bg);color:#222;}
+  header{position:fixed;top:0;left:0;right:0;background:var(--dark);color:#fff;z-index:1000;display:flex;flex-direction:column;align-items:center;padding:10px 0;box-shadow:0 2px 6px rgba(0,0,0,0.15);}
+  .search-wrap{width:100%;display:flex;justify-content:center;padding:6px 16px;}
+  #search{width:54%;max-width:900px;border-radius:24px;padding:8px 14px;border:none;font-size:15px;}
+  .cats{margin-top:8px;width:100%;background:#111;display:flex;justify-content:center;flex-wrap:wrap;gap:10px;padding:8px 12px;}
+  .cats button{border:0;background:#222;color:#ccc;padding:6px 12px;border-radius:18px;cursor:pointer;font-size:14px;}
+  .cats button.active,.cats button:hover{background:var(--accent);color:#fff;}
+  .page{display:flex;gap:20px;align-items:flex-start;padding:20px;padding-top:150px;}
+  .grid{flex:1 1 auto;display:grid;grid-template-columns: repeat(4,minmax(200px,1fr));gap:14px;}
+  .card{background:var(--card);border-radius:10px;padding:10px;box-shadow:0 2px 6px rgba(0,0,0,0.06);display:flex;flex-direction:column;align-items:stretch;min-height:110px;font-size:13px;position: relative;}
+  .card-top{display:flex;align-items:center;gap:10px;
+  .card.selected::after {
+  content: '';
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 12px;
+  height: 12px;
+  background-color: var(--accent); /* orange */
+  border-radius: 50%;
+  box-shadow: 0 0 3px rgba(0,0,0,0.3);
+}}
+  .thumb{width:44px;height:44px;background:#f0f0f0;border-radius:6px;object-fit:cover;flex-shrink:0;}
+  .title{font-weight:600;line-height:1.15;}
+  .controls{display:flex;align-items:center;justify-content:center;gap:8px;margin-top:8px;}
+  .controls button{width:28px;height:28px;border-radius:50%;border:0;background:var(--accent);color:#fff;font-weight:700;cursor:pointer;font-size:15px;}
+  .qty{width:34px;text-align:center;font-weight:700;}
+  .opts{display:flex;justify-content:center;gap:8px;margin-top:8px;font-size:12px;flex-wrap:wrap;}
+  .opts label{display:flex;align-items:center;gap:6px;cursor:pointer;}
+  aside{width:300px;flex:0 0 300px;background:var(--card);border-radius:10px;padding:16px;box-shadow:0 2px 8px rgba(0,0,0,0.06);position:sticky;top:120px;height:fit-content;}
+  aside h3{margin:0 0 10px 0;color:var(--accent);text-align:center;}
+  .mat-row{display:flex;justify-content:space-between;padding:8px 6px;border-radius:8px;margin-bottom:8px;background:#fbfbfb;}
+  .total-row{display:flex;justify-content:space-between;font-weight:700;padding-top:6px;border-top:1px dashed #eee;margin-top:10px;}
+  .truck{color:var(--accent);font-style:italic;text-align:right;margin-top:10px;font-size:0.95rem;}
+  @media (max-width:1100px){.grid{grid-template-columns:repeat(3,minmax(180px,1fr));}aside{display:none;}}
+  @media (max-width:800px){.grid{grid-template-columns:repeat(2,minmax(160px,1fr));}#search{width:80%;}}
+  @media (max-width:480px){.grid{grid-template-columns:repeat(1,minmax(120px,1fr));}#search{width:90%;}}
+</style>
+</head>
+<body>
+
+<header>
+  <div class="search-wrap">
+    <input id="search" placeholder="Rechercher un objet (ex: armoire, carton)..." />
+  </div>
+
+  <div class="cats" id="cats">
+    <button class="active" data-cat="Tous">Tous</button>
+    <button data-cat="Salon">Salon</button>
+    <button data-cat="Séjour">Séjour</button>
+    <button data-cat="Cuisine">Cuisine</button>
+    <button data-cat="Chambres">Chambres</button>
+    <button data-cat="Garage">Garage</button>
+    <button data-cat="Jardin">Jardin</button>
+    <button data-cat="Sanitaire">Sanitaire</button>
+  </div>
+</header>
+
+<div class="page">
+  <div class="grid" id="grid"></div>
+
+  <aside>
+    <div id="sidebarInner">
+      <h3>Récapitulatif</h3>
+      <div id="materialsList"></div>
+
+      <div class="total-row">
+        <div>Total général :</div>
+        <div id="totalGeneral">0.00 m³</div>
+      </div>
+
+      <div class="total-row">
+        <div>Récup :</div>
+        <div id="totalKeep">0.00 m³</div>
+      </div>
+
+      <div class="truck" id="truckEstimate">🚚 0.00</div>
+    </div>
+  </aside>
+</div>
+
+<script>
+/* --- Données (mêmes que précédemment) --- */
+const ITEMS = [
+  /* === SALON === */
+  {name:"Armoire 1 porte", category:"Salon", material:"Bois", volume:1, dismantle:true, canBeFull: true, image:""},
+  {name:"Armoire 2 portes", category:"Salon", material:"Bois", volume:2, dismantle:true, canBeFull: true, image:""},
+  {name:"Aspirateur", category:"Salon", material:"Électroménager", volume:0.5, dismantle:false, canBeFull: false, image:""},
+  {name:"Bahut", category:"Salon", material:"Bois", volume:2.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Canapé 2 places", category:"Salon", material:"Mobilier", volume:2, dismantle:true, image:""},
+  {name:"Canapé 3 places", category:"Salon", material:"Mobilier", volume:2.5, dismantle:true, image:""},
+  {name:"Canapé d'angle", category:"Salon", material:"Mobilier", volume:3, dismantle:true, image:""},
+  {name:"Carton penderie", category:"Salon", material:"Carton", volume:1.8, dismantle:false, canBeFull: true, image:""},
+  {name:"Carton standard", category:"Salon", material:"Carton", volume:0.1, dismantle:false, canBeFull: true, image:""},
+  {name:"Commode", category:"Salon", material:"Bois", volume:1.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Commode 6 tiroirs ", category:"Salon", material:"Bois", volume:1.2, dismantle:true, canBeFull: true, image:""},
+  {name:"Divers / M3 supplementaire", category:"Salon", material:"Tout venant", volume:1, dismantle:false, image:""},
+  {name:"Etagère", category:"Salon", material:"Bois", volume:0.25, dismantle:true, canBeFull: true, image:""},
+  {name:"Fauteuil", category:"Salon", material:"Mobilier", volume:1, dismantle:false, image:""},
+  {name:"Halogène", category:"Salon", material:"Tout venant", volume:0.75, dismantle:false, image:""},
+  {name:"Lustre", category:"Salon", material:"Tout venant", volume:0.25, dismantle:false, image:""},
+  {name:"Meuble living", category:"Salon", material:"Bois", volume:3, dismantle:true, canBeFull: true, image:""},
+  {name:"Petite Lampe", category:"Salon", material:"Tout venant", volume:0.2, dismantle:false, image:""},
+  {name:"Piano demi queue", category:"Salon", material:"Mobilier", volume:3.5, dismantle:false, image:""},
+  {name:"Piano droit", category:"Salon", material:"Mobilier", volume:2, dismantle:false, image:""},
+  {name:"Piano queue", category:"Salon", material:"Mobilier", volume:4.5, dismantle:false, image:""},
+  {name:"Plante", category:"Salon", material:"Tout venant", volume:0.5, dismantle:false, image:""},
+  {name:"Table de chevet", category:"Salon", material:"Bois", volume:0.2, dismantle:true, image:""},
+  {name:"Table ronde", category:"Salon", material:"Bois", volume:0.5, dismantle:true, image:""},
+  {name:"Tableau", category:"Salon", material:"Tout venant", volume:0.1, dismantle:false, image:""},
+  {name:"Vaisselier", category:"Salon", material:"Bois", volume:2, dismantle:true, canBeFull: true, image:""},
+
+  /* === SÉJOUR === */
+  {name:"Armoire 1 porte", category:"Séjour", material:"Bois", volume:1, dismantle:true, canBeFull: true, image:""},
+  {name:"Armoire 2 portes", category:"Séjour", material:"Bois", volume:2, dismantle:true, canBeFull: true, image:""},
+  {name:"Aspirateur", category:"Séjour", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Bahut", category:"Séjour", material:"Bois", volume:2.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Canapé 2 places", category:"Séjour", material:"Mobilier", volume:2, dismantle:true, image:""},
+  {name:"Canapé 3 places ", category:"Séjour", material:"Mobilier", volume:2.5, dismantle:true, image:""},
+  {name:"Canapé d'angle", category:"Séjour", material:"Mobilier", volume:3, dismantle:true, image:""},
+  {name:"Carton penderie", category:"Séjour", material:"Carton", volume:1.8, dismantle:false, canBeFull: true, image:""},
+  {name:"Carton standard", category:"Séjour", material:"Carton", volume:0.1, dismantle:false, canBeFull: true, image:""},
+  {name:"Commode", category:"Séjour", material:"Bois", volume:1.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Commode 6 tiroirs", category:"Séjour", material:"Bois", volume:1.2, dismantle:true, canBeFull: true, image:""},
+  {name:"Divers / M3 supplementaire", category:"Séjour", material:"Tout venant", volume:1, dismantle:false, image:""},
+  {name:"Etagère", category:"Séjour", material:"Bois", volume:0.25, dismantle:true, canBeFull: true, image:""},
+  {name:"Halogène", category:"Séjour", material:"Tout venant", volume:0.75, dismantle:false, image:""},
+  {name:"Lave vaisselle", category:"Séjour", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Lustre", category:"Séjour", material:"Tout venant", volume:0.25, dismantle:false, image:""},
+  {name:"Meuble living", category:"Séjour", material:"Bois", volume:3, dismantle:true, canBeFull: true, image:""},
+  {name:"Micro-onde", category:"Séjour", material:"Électroménager", volume:0.25, dismantle:false, image:""},
+  {name:"Petite Lampe", category:"Séjour", material:"Tout venant", volume:0.25, dismantle:false, image:""},
+  {name:"Piano demi queue", category:"Séjour", material:"Mobilier", volume:3.5, dismantle:false, image:""},
+  {name:"Piano droit", category:"Séjour", material:"Mobilier", volume:2, dismantle:false, image:""},
+  {name:"Piano queue", category:"Séjour", material:"Mobilier", volume:4.5, dismantle:false, image:""},
+  {name:"Plante", category:"Séjour", material:"Tout venant", volume:0.5, dismantle:false, image:""},
+  {name:"Table de chevet", category:"Séjour", material:"Bois", volume:0.2, dismantle:true, image:""},
+  {name:"Table ronde", category:"Séjour", material:"Bois", volume:0.5, dismantle:true, image:""},
+  {name:"Tableau", category:"Séjour", material:"Tout venant", volume:0.1, dismantle:false, image:""},
+  {name:"Vaisselier", category:"Séjour", material:"Bois", volume:2, dismantle:true, canBeFull: true, image:""},
+
+  /* === CUISINE === */
+  {name:"Armoire 1 porte", category:"Cuisine", material:"Bois", volume:1, dismantle:true, canBeFull: true, image:""},
+  {name:"Armoire 2 portes", category:"Cuisine", material:"Bois", volume:2, dismantle:true, canBeFull: true, image:""},
+  {name:"Aspirateur", category:"Cuisine", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Bahut", category:"Cuisine", material:"Bois", volume:2.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Cafetiere", category:"Cuisine", material:"Tout venant", volume:0.1, dismantle:false, image:""},
+  {name:"Carton standard", category:"Cuisine", material:"Carton", volume:0.1, dismantle:false, canBeFull: true, image:""},
+  {name:"Casseroles", category:"Cuisine", material:"Tout venant", volume:0.1, dismantle:false, image:""},
+  {name:"Commode 6 tiroirs", category:"Cuisine", material:"Bois", volume:1.2, dismantle:true, canBeFull: true, image:""},
+  {name:"Congelateur coffre", category:"Cuisine", material:"Électroménager", volume:1.5, dismantle:false, canBeFull: true, image:""},
+  {name:"Divers / M3 supplementaire", category:"Cuisine", material:"Tout venant", volume:1, dismantle:false, canBeFull: true, image:""},
+  {name:"Etagère", category:"Cuisine", material:"Bois", volume:0.25, dismantle:true, canBeFull: true, image:""},
+  {name:"Petit Frigo", category:"Cuisine", material:"Électroménager", volume:0.5, dismantle:false, canBeFull: true, image:""},
+  {name:"Frigo normal", category:"Cuisine", material:"Électroménager", volume:1, dismantle:false, canBeFull: true, image:""},
+  {name:"Frigo américain", category:"Cuisine", material:"Électroménager", volume:2, dismantle:false, canBeFull: true, image:""},
+  {name:"Gazinière", category:"Cuisine", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Lave Linge", category:"Cuisine", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Lave vaisselle", category:"Cuisine", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Lustre", category:"Cuisine", material:"Tout venant", volume:0.25, dismantle:false, image:""},
+  {name:"Meuble bas cuisine", category:"Cuisine", material:"Bois", volume:1, dismantle:true, canBeFull: true, image:""},
+  {name:"Meuble haut cuisine", category:"Cuisine", material:"Bois", volume:0.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Meuble living", category:"Cuisine", material:"Bois", volume:3, dismantle:true, canBeFull: true, image:""},
+  {name:"Meuble sous lavabo", category:"Cuisine", material:"Bois", volume:0.8, dismantle:true, canBeFull: true, image:""},
+  {name:"Micro-onde", category:"Cuisine", material:"Électroménager", volume:0.25, dismantle:false, image:""},
+  {name:"Petit congelateur", category:"Cuisine", material:"Électroménager", volume:1, dismantle:false, canBeFull: true, image:""},
+  {name:"Petite Lampe", category:"Cuisine", material:"Tout venant", volume:0.2, dismantle:false, image:""},
+  {name:"Piano queue", category:"Cuisine", material:"Mobilier", volume:4.5, dismantle:false, image:""},
+  {name:"Plan de travail", category:"Cuisine", material:"Bois", volume:1, dismantle:true, image:""},
+  {name:"Plante", category:"Cuisine", material:"Tout venant", volume:0.5, dismantle:false, image:""},
+  {name:"Plaque de cuisson", category:"Cuisine", material:"Électroménager", volume:0.3, dismantle:false, image:""},
+  {name:"Seche Linge", category:"Cuisine", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Table ronde", category:"Cuisine", material:"Bois", volume:0.5, dismantle:true, image:""},
+  {name:"Tableau", category:"Cuisine", material:"Tout venant", volume:0.1, dismantle:false, image:""},
+  {name:"Vaisselier", category:"Cuisine", material:"Bois", volume:2, dismantle:true, image:""},
+  /* === CHAMBRES === */
+  {name:"Armoire 1 porte", category:"Chambres", material:"Bois", volume:1, dismantle:true, canBeFull: true, image:""},
+  {name:"Armoire 2 portes", category:"Chambres", material:"Bois", volume:2, dismantle:true, canBeFull: true, image:""},
+  {name:"Bahut", category:"Chambres", material:"Bois", volume:2.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Canapé 2 places", category:"Chambres", material:"Mobilier", volume:2, dismantle:true, image:""},
+  {name:"Canapé 3 places", category:"Chambres", material:"Mobilier", volume:2.5, dismantle:true, image:""},
+  {name:"Carton penderie", category:"Chambres", material:"Carton", volume:1.8, dismantle:false, canBeFull: true, image:""},
+  {name:"Carton standard", category:"Chambres", material:"Carton", volume:0.1, dismantle:false, canBeFull: true, image:""},
+  {name:"Coiffeuse", category:"Chambres", material:"Bois", volume:1.5, dismantle:true, image:""},
+  {name:"Commode", category:"Chambres", material:"Bois", volume:1.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Commode 6 tiroirs", category:"Chambres", material:"Bois", volume:1.2, dismantle:true, canBeFull: true, image:""},
+  {name:"Divers / M3 supplementaire", category:"Chambres", material:"Tout venant", volume:1, dismantle:false, canBeFull: true, image:""},
+  {name:"Etagère", category:"Chambres", material:"Bois", volume:0.25, dismantle:true, canBeFull: true, image:""},
+  {name:"Fauteuil", category:"Chambres", material:"Mobilier", volume:1, dismantle:false, image:""},
+  {name:"Halogène", category:"Chambres", material:"Tout venant", volume:0.75, dismantle:false, image:""},
+  {name:"Lit 2 places", category:"Chambres", material:"MixteLit", volume:2, dismantle:true, image:""},
+  {name:"Lit simple 90", category:"Chambres", material:"Bois", volume:1.5, dismantle:true, image:""},
+  {name:"Lit superposé", category:"Chambres", material:"Bois", volume:2.5, dismantle:true, image:""},
+  {name:"Lustre", category:"Chambres", material:"Tout venant", volume:0.25, dismantle:false, image:""},
+  {name:"Meuble living", category:"Chambres", material:"Bois", volume:3, dismantle:true, canBeFull: true, image:""},
+  {name:"Petite Lampe", category:"Chambres", material:"Tout venant", volume:0.25, dismantle:false, image:""},
+  {name:"Piano demi queue", category:"Chambres", material:"Mobilier", volume:3.5, dismantle:false, image:""},
+  {name:"Piano droit", category:"Chambres", material:"Mobilier", volume:2, dismantle:false, image:""},
+  {name:"Piano queue", category:"Chambres", material:"Mobilier", volume:4.5, dismantle:false, image:""},
+  {name:"Plante", category:"Chambres", material:"Tout venant", volume:0.5, dismantle:false, image:""},
+  {name:"Table de chevet", category:"Chambres", material:"Bois", volume:0.2, dismantle:true, image:""},
+  {name:"Table ronde", category:"Chambres", material:"Bois", volume:0.5, dismantle:true, image:""},
+  {name:"Tableau", category:"Chambres", material:"Tout venant", volume:0.1, dismantle:false, image:""},
+  /* === GARAGE === */
+  {name:"Armoire 1 porte", category:"Garage", material:"Bois", volume:1.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Armoire 2 portes", category:"Garage", material:"Bois", volume:2.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Aspirateur", category:"Garage", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Cafetiere", category:"Garage", material:"Tout venant", volume:0.1, dismantle:false, image:""},
+  {name:"Carton standard", category:"Garage", material:"Carton", volume:0.1, dismantle:false, canBeFull: true, image:""},
+  {name:"Casseroles", category:"Garage", material:"Tout venant", volume:0.1, dismantle:false, image:""},
+  {name:"Commode", category:"Garage", material:"Bois", volume:1.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Commode 6 tiroirs", category:"Garage", material:"Bois", volume:1.2, dismantle:true, canBeFull: true, image:""},
+  {name:"Congelateur coffre", category:"Garage", material:"Électroménager", volume:1.5, dismantle:false, canBeFull: true, image:""},
+  {name:"Etabli", category:"Garage", material:"Bois", volume:1.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Etagère", category:"Garage", material:"Bois", volume:0.75, dismantle:true, canBeFull: true, image:""},
+  {name:"Petit Frigo", category:"Garage", material:"Électroménager", volume:0.5, dismantle:false, canBeFull: true, image:""},
+  {name:"Frigo normal", category:"Garage", material:"Électroménager", volume:1, dismantle:false, canBeFull: true, image:""},
+  {name:"Gazinière", category:"Garage", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Lave Linge", category:"Garage", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Lot-outils", category:"Garage", material:"Ferraille", volume:0.7, dismantle:false, image:""},
+  {name:"Ferraille", category:"Garage", material:"Ferraille", volume:1, dismantle:false, image:""},
+  {name:"Meuble bas cuisine", category:"Garage", material:"Bois", volume:1, dismantle:true, canBeFull: true, image:""},
+  {name:"Meuble haut cuisine", category:"Garage", material:"Bois", volume:0.5, dismantle:true, canBeFull: true, image:""},
+  {name:"Meuble living", category:"Garage", material:"Bois", volume:3, dismantle:true, image:""},
+  {name:"Meuble sous lavabo", category:"Garage", material:"Bois", volume:0.8, dismantle:true, canBeFull: true, image:""},
+  {name:"Parasol", category:"Garage", material:"Tout venant", volume:0.3, dismantle:false, image:""},
+  {name:"Petit congelateur", category:"Garage", material:"Électroménager", volume:1, dismantle:false, canBeFull: true, image:""},
+  {name:"Petite Lampe", category:"Garage", material:"Tout venant", volume:0.2, dismantle:false, image:""},
+  {name:"Pousette", category:"Garage", material:"Mobilier", volume:0.8, dismantle:false, image:""},
+  {name:"Scooter", category:"Garage", material:"Ferraille", volume:2, dismantle:false, image:""},
+  {name:"Seche Linge", category:"Garage", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Tondeuse", category:"Garage", material:"Ferraille", volume:0.3, dismantle:false, image:""},
+  {name:"Transat", category:"Garage", material:"Tout venant", volume:0.5, dismantle:false, image:""},
+  {name:"Vaisselier", category:"Garage", material:"Bois", volume:2, dismantle:true, canBeFull: true, image:""},
+  {name:"Vélo", category:"Garage", material:"Ferraille", volume:0.8, dismantle:false, image:""},
+  /* === JARDIN === */
+  {name:"Carton standard", category:"Jardin", material:"Carton", volume:0.1, dismantle:false, canBeFull: true, image:""},
+  {name:"Divers / M3 supplementaire", category:"Jardin", material:"Tout venant", volume:1, dismantle:false, image:""},
+  {name:"Parasol", category:"Jardin", material:"Tout venant", volume:0.3, dismantle:false, image:""},
+  {name:"Plante", category:"Jardin", material:"Tout venant", volume:0.5, dismantle:false, image:""},
+  {name:"Tondeuse", category:"Jardin", material:"Ferraille", volume:0.3, dismantle:false, image:""},
+  {name:"Transat", category:"Jardin", material:"Tout venant", volume:0.5, dismantle:false, image:""},
+  {name:"Vélo", category:"Jardin", material:"Ferraille", volume:0.8, dismantle:false, image:""},
+  /* === SANITAIRE === */
+  {name:"Armoire 1 porte", category:"Sanitaire", material:"Bois", volume:1, dismantle:true, canBeFull: true, image:""},
+  {name:"Carton standard", category:"Sanitaire", material:"Carton", volume:0.1, dismantle:false, canBeFull: true, image:""},
+  {name:"Coiffeuse", category:"Sanitaire", material:"Bois", volume:1.5, dismantle:true, image:""},
+  {name:"Divers / M3 supplementaire", category:"Sanitaire", material:"Tout venant", volume:1, dismantle:false, image:""},
+  {name:"Etagère", category:"Sanitaire", material:"Bois", volume:0.25, dismantle:true, canBeFull: true, image:""},
+  {name:"Lave Linge", category:"Sanitaire", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Lustre", category:"Sanitaire", material:"Tout venant", volume:0.25, dismantle:false, image:""},
+  {name:"Meuble sous lavabo", category:"Sanitaire", material:"Bois", volume:0.8, dismantle:true, canBeFull: true, image:""},
+  {name:"Petite Lampe", category:"Sanitaire", material:"Tout venant", volume:0.2, dismantle:false, image:""},
+  {name:"Pharmacie", category:"Sanitaire", material:"Tout venant", volume:0.4, dismantle:false, image:""},
+  {name:"Seche Linge", category:"Sanitaire", material:"Électroménager", volume:0.5, dismantle:false, image:""},
+  {name:"Tableau", category:"Sanitaire", material:"Tout venant", volume:0.1, dismantle:false, image:""}
+];
+
+/* STATE stores per-index selections */
+const STATE = {}; // STATE[idx] = { qty, dismantle, full, keep }
+
+/* DOM refs */
+const grid = document.getElementById('grid');
+const materialsList = document.getElementById('materialsList');
+const totalGeneralEl = document.getElementById('totalGeneral');
+const truckEstimateEl = document.getElementById('truckEstimate');
+const totalKeepEl = document.getElementById('totalKeep');
+const searchInput = document.getElementById('search');
+
+/* Build grid */
+function buildGrid(){
+  grid.innerHTML = '';
+  ITEMS.forEach((it, idx) => {
+    STATE[idx] = STATE[idx] || { qty:0, dismantle:false, full:false, keep:false };
+    const idfrag = `i${idx}`;
+    const card = document.createElement('div');
+    card.className = 'card';
+    card.dataset.cat = it.category;
+    card.dataset.idx = idx;
+    card.innerHTML = `
+      <div class="card-top">
+        <img class="thumb" src="images/${it.name.replace(/\s/g, '_')}.png" alt="${it.name}" onerror="this.style.opacity=0.25;">
+        <div class="title">${it.name}</div>
+      </div>
+
+      <div class="controls">
+        <button aria-label="moins" onclick="changeQty(${idx}, -1)">−</button>
+        <div class="qty" id="qty-i${idx}">${STATE[idx].qty}</div>
+        <button aria-label="plus" onclick="changeQty(${idx}, 1)">+</button>
+      </div>
+
+      <div class="opts">
+        ${it.dismantle ? `<label><input type="checkbox" id="dism-i${idx}" onchange="onDismToggle(${idx})"> démonté</label>` : ''}
+        ${it.canBeFull ? `<label><input type="checkbox" id="full-i${idx}" onchange="onFullToggle(${idx})"> full</label>` : ''}
+        <label><input type="checkbox" id="keep-i${idx}" onchange="onKeepToggle(${idx})"> Récup</label>
+      </div>
+    `;
+	
+	// ✅ Ajout du marqueur visuel sur les cartes sélectionnées
+    if (STATE[idx].qty > 0 || STATE[idx].keep || STATE[idx].full) {
+      card.classList.add('selected');
+    } else {
+      card.classList.remove('selected');
+    }
+	
+    grid.appendChild(card);
+  });
+}
+
+/* Quantity change */
+function changeQty(idx, delta){
+  STATE[idx] = STATE[idx] || { qty:0, dismantle:false, full:false, keep:false };
+  STATE[idx].qty = Math.max(0, (STATE[idx].qty||0) + delta);
+  const el = document.getElementById(`qty-i${idx}`);
+  if(el) el.textContent = STATE[idx].qty;
+  updateTotals();
+}
+
+/* Checkboxes behavior */
+function onDismToggle(idx){
+  const checked = document.getElementById(`dism-i${idx}`)?.checked || false;
+  STATE[idx] = STATE[idx] || { qty:0, dismantle:false, full:false, keep:false };
+  STATE[idx].dismantle = !!checked;
+  if(checked){
+    // if dismantled, uncheck keep
+    STATE[idx].keep = false;
+    const keepBox = document.getElementById(`keep-i${idx}`);
+    if(keepBox) keepBox.checked = false;
+  }
+  updateTotals();
+}
+function onFullToggle(idx){
+  const checked = document.getElementById(`full-i${idx}`)?.checked || false;
+  STATE[idx] = STATE[idx] || { qty:0, dismantle:false, full:false, keep:false };
+  STATE[idx].full = !!checked;
+  updateTotals();
+}
+function onKeepToggle(idx){
+  const checked = document.getElementById(`keep-i${idx}`)?.checked || false;
+  STATE[idx] = STATE[idx] || { qty:0, dismantle:false, full:false, keep:false };
+  STATE[idx].keep = !!checked;
+  if(checked){
+    // if kept, uncheck dismantle
+    STATE[idx].dismantle = false;
+    const dismBox = document.getElementById(`dism-i${idx}`);
+    if(dismBox) dismBox.checked = false;
+  }
+  updateTotals();
+}
+
+/* Apply search & category filters */
+function applyFilters(){
+  const q = (searchInput.value || '').trim().toLowerCase();
+  const activeCatBtn = document.querySelector('.cats button.active');
+  const cat = activeCatBtn ? activeCatBtn.dataset.cat : 'Tous';
+  Array.from(grid.children).forEach(card=>{
+    const idx = parseInt(card.dataset.idx,10);
+    const it = ITEMS[idx];
+    const matchesCat = (cat === 'Tous' || it.category === cat);
+    const matchesSearch = (!q) || (it.name.toLowerCase().includes(q));
+    card.style.display = (matchesCat && matchesSearch) ? '' : 'none';
+  });
+}
+
+/* Category buttons */
+document.querySelectorAll('.cats button').forEach(btn=>{
+  btn.addEventListener('click', e=>{
+    document.querySelectorAll('.cats button').forEach(b=>b.classList.remove('active'));
+    btn.classList.add('active');
+    applyFilters();
+  });
+});
+searchInput.addEventListener('input', applyFilters);
+
+/* Totals calculation */
+function updateTotals(){
+  const totals = {}; // matériel -> volume
+  let totalGlobal = 0;
+  let totalKeep = 0;
+
+  ITEMS.forEach((it, idx) => {
+    const state = STATE[idx] || {qty:0, dismantle:false, full:false, keep:false};
+    const qty = state.qty || 0;
+    if(qty === 0) return;
+
+    // base volume
+    const base = it.volume;
+    const isDism = it.dismantle && state.dismantle;
+    const effectivePerItem = isDism ? (base * 0.7) : base;
+
+    // ⚙️ Si l’objet est à récupérer : il NE s’ajoute pas aux matériaux,
+    // seulement au total "Récup"
+    if (state.keep) {
+      totalKeep += effectivePerItem * qty;
+      totalGlobal += effectivePerItem * qty;
+      return; // ne pas compter dans le reste
+    }
+
+    // Sinon, objet normal → ajouté à son matériau
+    totals[it.material] = (totals[it.material] || 0) + (effectivePerItem * qty);
+    totalGlobal += effectivePerItem * qty;
+
+    // Si "full" est coché → ajoute 20% du volume dans "Tout venant"
+    if (state.full) {
+      const extraPerItem = (it.fullValue !== undefined) ? it.fullValue : (base * 0.20);
+      totals["Tout venant"] = (totals["Tout venant"] || 0) + (extraPerItem * qty);
+      totalGlobal += extraPerItem * qty;
+    }
+  });
+
+  // --- Rendu visuel des matériaux ---
+  const order = ["Bois","Mobilier","Électroménager","Carton","Ferraille","Tout venant"];
+  materialsList.innerHTML = '';
+  const presentKeys = Object.keys(totals);
+  order.forEach(k=>{
+    if(totals[k]) {
+      const el = document.createElement('div');
+      el.className = 'mat-row';
+      el.innerHTML = `<div>${k}</div><div>${totals[k].toFixed(2)} m³</div>`;
+      materialsList.appendChild(el);
+    }
+  });
+  // autres matériaux éventuels
+  presentKeys.forEach(k=>{
+    if(order.indexOf(k) === -1){
+      const el = document.createElement('div');
+      el.className = 'mat-row';
+      el.innerHTML = `<div>${k}</div><div>${totals[k].toFixed(2)} m³</div>`;
+      materialsList.appendChild(el);
+    }
+  });
+
+  // Totaux généraux
+  totalGeneralEl.textContent = `${totalGlobal.toFixed(2)} m³`;
+  totalKeepEl.textContent = `${totalKeep.toFixed(2)} m³`;
+
+  // Estimation camions
+  const trucks = totalGlobal / 11;
+  truckEstimateEl.textContent = `🚚 ${trucks.toFixed(2)}`;
+}
+
+/* Reset */
+function resetAll(){
+  Object.keys(STATE).forEach(k=>{
+    STATE[k] = { qty:0, dismantle:false, full:false, keep:false };
+  });
+  buildGrid();
+  updateTotals();
+}
+
+/* Expose helpers for inline handlers if necessary */
+window.changeQty = changeQty;
+window.onDismToggle = onDismToggle;
+window.onFullToggle = onFullToggle;
+window.onKeepToggle = onKeepToggle;
+window.resetAll = resetAll;
+
+/* Init */
+buildGrid();
+applyFilters();
+updateTotals();
+</script>
+
+</body>
+</html>
